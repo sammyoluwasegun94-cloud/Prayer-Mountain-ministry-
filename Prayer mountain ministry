@@ -1,0 +1,81 @@
+const { AccessToken } = require("livekit-server-sdk");
+
+exports.handler = async (event) => {
+  const headers = {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store"
+  };
+
+  if (event.httpMethod !== "POST") {
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ error: "Method not allowed." })
+    };
+  }
+
+  const { LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL } = process.env;
+
+  if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !LIVEKIT_URL) {
+    return {
+      statusCode: 503,
+      headers,
+      body: JSON.stringify({
+        error: "Live audio is not configured yet. Please contact the ministry administrator."
+      })
+    };
+  }
+
+  try {
+    const input = JSON.parse(event.body || "{}");
+    const name = String(input.name || "").trim().slice(0, 60);
+    const room = String(input.room || "").trim().slice(0, 80);
+
+    if (!name || !room) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: "Enter your name and room code."
+        })
+      };
+    }
+
+    const identity =
+      "member-" +
+      Date.now().toString(36) +
+      "-" +
+      Math.random().toString(36).slice(2, 9);
+
+    const token = new AccessToken(
+      LIVEKIT_API_KEY,
+      LIVEKIT_API_SECRET,
+      { identity, name, ttl: "1h" }
+    );
+
+    token.addGrant({
+      roomJoin: true,
+      room,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true
+    });
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        token: await token.toJwt(),
+        url: LIVEKIT_URL
+      })
+    };
+  } catch (error) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({
+        error: "Could not create a room access token."
+      })
+    };
+  }
+};
